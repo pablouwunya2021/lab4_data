@@ -35,16 +35,61 @@ para apoyar las decisiones de la empresa al recomendar propiedades.
 
 ---
 
+# Marco Teorico y Metodologia
+
+## Arboles de Decision: Conceptos Fundamentales
+
+Los **arboles de decision** son modelos de aprendizaje supervisado que particionan
+recursivamente el espacio de caracteristicas mediante divisiones binarias. A diferencia
+de la regresion lineal, que impone una relacion funcional global, los arboles capturan
+relaciones **no lineales e interacciones complejas** entre variables.
+
+### Arboles de Regresion vs Clasificacion
+
+- **Arboles de Regresion**: Predicen valores continuos (e.g., precio en $). Utilizan
+  el criterio de **suma de cuadrados residuales (SSE)** para determinar divisiones.
+- **Arboles de Clasificacion**: Predicen clases discretas (Economica, Intermedia, Cara).
+  Utilizan el criterio de **indice de Gini** o **entropia** para maximizar la pureza
+  de los nodos (homogeneidad de clases).
+
+### Ventajas y Desventajas
+
+**Ventajas:**
+- Interpretabilidad natural: las decisiones pueden explicarse en lenguaje natural
+- No requieren normalizacion de variables
+- Capturan interacciones automaticamente
+- Manejo nativo de variables categoricas
+
+**Desventajas:**
+- Tendencia al sobreajuste (overfitting) si crecen demasiado
+- Inestabilidad: pequenos cambios en los datos pueden producir arboles muy diferentes
+- Sesgo hacia variables con muchas categorias
+
+### Random Forest: Reduccion de Varianza
+
+Random Forest es un **metodo de ensamble** que entrena multiples arboles de decision
+en muestras aleatorias (con reemplazo) del dataset original. Cada arbol utiliza
+un subconjunto aleatorio de variables en cada division. La prediccion final es:
+- **Regresion**: Promedio de predicciones de todos los arboles
+- **Clasificacion**: Votacion mayoritaria entre arboles
+
+Esta estrategia reduce drasticamente la varianza sin aumentar el sesgo, produciendo
+modelos mas robustos y generalizables.
+
+---
+
 # 1. Librerias y Carga de Datos
 
 ```{r librerias}
-# install.packages(c("rpart","rpart.plot","randomForest","caret","ggplot2","dplyr","Metrics"))
+# install.packages(c("rpart","rpart.plot","randomForest","caret","ggplot2","dplyr","Metrics","tibble","tidyr"))
 library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(caret)
 library(ggplot2)
 library(dplyr)
+library(tidyr)
+library(tibble)
 library(Metrics)
 
 set.seed(42)
@@ -627,6 +672,84 @@ promedio de sus predicciones es mas estable y preciso que cualquier arbol indivi
 **Random Forest es el algoritmo recomendado para prediccion de precio** en el
 contexto de SmartStay Advisors.
 
+## 6.5 Comparacion de Complejidad y Eficiencia Operacional
+
+```{r comparacion_eficiencia}
+tabla_eficiencia <- data.frame(
+  Algoritmo = c("Regresion Lineal", 
+                paste0("Arbol prof=", mejor_prof_reg),
+                "Random Forest (200)"),
+  RMSE = tabla_comp$RMSE,
+  Interpretabilidad = c("Muy Alta", "Alta", "Baja"),
+  Complejidad_O = c("O(p)", "O(log n)", "O(n*p*log n)"),
+  Escalabilidad = c("Excelente", "Buena", "Moderada")
+)
+
+knitr::kable(tabla_eficiencia,
+             caption = "Tabla 4B. Comparacion de caracteristicas operacionales")
+
+cat("\nAnalisis operacional:\n")
+cat("- Regresion Lineal: Mas rapida pero inflexible ante datos no lineales\n")
+cat("- Arbol de Regresion: Balance entre velocidad e interpretabilidad\n")
+cat("- Random Forest: Mejor precision a costo de mayor complejidad computacional\n\n")
+cat("RECOMENDACION DE IMPLEMENTACION:\n")
+cat("Backend: Usar Random Forest para maxima precision en recomendaciones automaticas\n")
+cat("Frontend: Generar explicaciones usando Arbol simplificado para transparencia\n")
+```
+
+## 6.6 Analisis de Residuales - Regresion
+
+Un análisis de residuales permite diagnosticar si el modelo captura adecuadamente
+las relaciones en los datos. Los residuales (errores) deben distribuirse de manera
+aleatoria sin patrones sistematicos.
+
+```{r residuales_reg}
+residuales_rf <- test_data$price_num - pred_rf_reg
+
+df_residuales <- data.frame(
+  Predicho    = pred_rf_reg,
+  Residual    = residuales_rf,
+  Abs_Error   = abs(residuales_rf)
+)
+
+# Grafico 1: Residuales vs Predichos
+p1 <- ggplot(df_residuales, aes(x = Predicho, y = Residual)) +
+  geom_point(alpha = 0.4, color = "steelblue") +
+  geom_hline(yintercept = 0, color = "red", linewidth = 1, linetype = "dashed") +
+  labs(title    = "Residuales vs Predichos",
+       subtitle = "Idealmente sin patrones sistematicos",
+       x = "Precio Predicho ($)", y = "Residual ($)") +
+  theme_minimal(base_size = 11)
+
+# Grafico 2: Distribucion de residuales
+p2 <- ggplot(df_residuales, aes(x = Residual)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white", alpha = 0.8) +
+  labs(title    = "Distribucion de residuales",
+       subtitle = "Aproximadamente normal indica buen ajuste",
+       x = "Residual ($)", y = "Frecuencia") +
+  theme_minimal(base_size = 11)
+
+if(requireNamespace("gridExtra", quietly = TRUE)) {
+  gridExtra::grid.arrange(p1, p2, ncol = 2)
+} else {
+  print(p1)
+  print(p2)
+}
+
+cat("\nEstadisticos de residuales (Random Forest):\n")
+cat("Media de residuales:          ", round(mean(residuales_rf), 2), " (debe estar cerca de 0)\n")
+cat("Desv. Est. de residuales:     ", round(sd(residuales_rf), 2), "\n")
+cat("Percentil 10 de error absoluto:", round(quantile(df_residuales$Abs_Error, 0.10), 2), "\n")
+cat("Percentil 50 de error absoluto:", round(quantile(df_residuales$Abs_Error, 0.50), 2), "\n")
+cat("Percentil 90 de error absoluto:", round(quantile(df_residuales$Abs_Error, 0.90), 2), "\n")
+```
+
+**Interpretacion:** La media de residuales cercana a cero indica que el modelo no
+tiene sesgo sistematico. La distribucion aproximadamente simetrica sugiere que el
+modelo trata equitativamente propiedades baratas y caras. Las colas mas pesadas en
+los percentiles 90 sugieren que hay propiedades especialmente dificiles de predecir
+(posiblemente propiedades luxury o con caracteristicas atipicas).
+
 ---
 
 # 7. Arbol de Clasificacion
@@ -727,9 +850,38 @@ Analizando la Figura 7 en detalle:
   el modelo identifica bien las propiedades premium, lo cual es critico para
   SmartStay cuando atiende clientes corporativos con presupuesto alto.
 
----
+## 7.4 Metricas detalladas de clasificacion
 
-# 8. Validacion Cruzada y Tuneo de Profundidad
+```{r metricas_detalladas_base}
+# Extraer metricas por clase
+metricas_por_clase <- cm_base$byClass %>% as.data.frame() %>%
+  rownames_to_column("Clase") %>%
+  select(Clase, Sensitivity, Specificity, Precision, F1) %>%
+  mutate(across(-Clase, round, 4))
+
+cat("\n=== METRICAS POR CLASE (Arbol Base) ===\n")
+print(metricas_por_clase)
+
+# Tabla resumida
+knitr::kable(
+  metricas_por_clase,
+  caption = "Tabla 2B. Metricas de desempeno por categoria de precio (Arbol Base)"
+)
+
+cat("\nInterpretacion de metricas:\n")
+cat("- Sensitivity (Recall): De las propiedades de esta clase, ¿cuantas identifica correctamente?\n")
+cat("- Specificity: De las propiedades que NO son esta clase, ¿cuantas rechaza correctamente?\n")
+cat("- Precision: De las predicciones de esta clase, ¿cuantas son correctas?\n")
+cat("- F1-Score: Media armonica de Precision y Recall (equilibrio entre ambas)\n")
+```
+
+El análisis por clase revela el desempeño diferenciado del modelo. Por ejemplo:
+- Si **Sensitivity de Cara** es bajo (< 0.70), el modelo pierde muchas propiedades
+  premium, lo que es grave para clientes corporativos.
+- Si **Precision de Economica** es bajo, el modelo recomienda propiedades caras a
+  clientes con presupuesto ajustado, generando insatisfaccion.
+
+---
 
 ## 8.1 Entrenamiento con Validacion Cruzada (10-fold)
 
@@ -961,9 +1113,104 @@ de un cliente (presupuesto, numero de huespedes, ciudad), el sistema puede pre-f
 propiedades usando las variables mas importantes antes de consultar el precio exacto,
 acelerando el proceso de recomendacion.
 
+## 9.4 Metricas detalladas de Random Forest
+
+```{r metricas_rf_detalladas}
+metricas_rf_clase <- cm_rf$byClass %>% as.data.frame() %>%
+  rownames_to_column("Clase") %>%
+  select(Clase, Sensitivity, Specificity, Precision, F1) %>%
+  mutate(across(-Clase, round, 4))
+
+knitr::kable(
+  metricas_rf_clase,
+  caption = "Tabla 7. Metricas detalladas de desempeno por categoria - Random Forest"
+)
+
+# Tabla comparativa con arbol base
+tabla_comp_metricas <- data.frame(
+  Clase = c("Economica", "Intermedia", "Cara"),
+  Arbol_Recall = round(cm_base$byClass[, "Sensitivity"], 3),
+  RF_Recall = round(cm_rf$byClass[, "Sensitivity"], 3),
+  Arbol_Precision = round(cm_base$byClass[, "Precision"], 3),
+  RF_Precision = round(cm_rf$byClass[, "Precision"], 3),
+  Mejora_Recall = round((cm_rf$byClass[, "Sensitivity"] - 
+                         cm_base$byClass[, "Sensitivity"])*100, 1)
+)
+
+cat("\n=== COMPARACION METRICAS: ARBOL BASE vs RANDOM FOREST ===\n")
+print(tabla_comp_metricas)
+
+ggplot(metricas_rf_clase %>% 
+       tidyr::pivot_longer(cols = c(Sensitivity, Specificity, Precision, F1),
+                          names_to = "Metrica", values_to = "Score"),
+       aes(x = Clase, y = Score, fill = Metrica)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+  geom_hline(yintercept = 1, color = "red", linetype = "dashed", alpha = 0.3) +
+  scale_fill_manual(values = c("Sensitivity" = "#e74c3c",
+                               "Specificity" = "#3498db",
+                               "Precision" = "#2ecc71",
+                               "F1" = "#f39c12")) +
+  labs(title = "Figura 9B. Metricas de clasificacion por categoria (Random Forest)",
+       x = "Categoria de Precio", y = "Score (0-1)") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+
+cat("\n=== INTERPRETACION DE RESULTADOS POR CLASE ===\n\n")
+
+for (i in 1:nrow(metricas_rf_clase)) {
+  clase <- metricas_rf_clase$Clase[i]
+  recall <- metricas_rf_clase$Sensitivity[i]
+  prec <- metricas_rf_clase$Precision[i]
+  spec <- metricas_rf_clase$Specificity[i]
+  f1 <- metricas_rf_clase$F1[i]
+  mejora <- tabla_comp_metricas$Mejora_Recall[i]
+  
+  cat("CLASE:", clase, "\n")
+  cat("  Sensitivity (Recall):", recall, "- De las", clase, "reales, identifica")
+  cat(round(recall*100), "% correctamente\n")
+  cat("  Specificity:", spec, "- Rechaza correctamente", round(spec*100), 
+      "% de propiedades que NO son", clase, "\n")
+  cat("  Precision:", prec, "- De predicciones de", clase, ",", 
+      round(prec*100), "% son correctas\n")
+  cat("  F1-Score:", f1, "- Balance entre precision y recall\n")
+  cat("  Mejora vs Arbol Base:", mejora, "puntos porcentuales en Recall\n\n")
+}
+```
+
+## 9.5 Analisis de Errores por Categoria
+
+```{r error_analysis_rf}
+# Matriz confusion relativa (porcentajes)
+cm_rf_pct <- cm_rf$table
+cm_rf_pct <- sweep(cm_rf_pct, 2, colSums(cm_rf_pct), '/') * 100
+
+cat("\n=== MATRIZ DE CONFUSION (PORCENTAJES POR CLASE REAL) ===\n\n")
+cat("Filas: Clase Predicha | Columnas: Clase Real\n\n")
+print(round(cm_rf_pct, 1))
+
+cat("\n=== ANALISIS DE ERRORES ===\n\n")
+for(i in 1:3) {
+  for(j in 1:3) {
+    if(i != j) {
+      error_pct <- cm_rf_pct[i, j]
+      cat(sprintf("Clasificadas como %s siendo %s: %.1f%%\n", 
+                  rownames(cm_rf_pct)[i], colnames(cm_rf_pct)[j], error_pct))
+    }
+  }
+}
+
+cat("\n=== IMPLICACIONES OPERACIONALES ===\n")
+cat("1. Si Recall de 'Cara' es bajo: El modelo pierde propiedades premium\n")
+cat("   -> Riesgo: Cliente corporativo no está satisfecho con opciones caras\n\n")
+cat("2. Si Precision de 'Economica' es baja: Falsos positivos de presupuesto bajo\n")
+cat("   -> Riesgo: Recomendar propiedad cara a cliente con presupuesto ajustado\n\n")
+cat("3. Errores entre clases adyacentes (Econ↔Inter, Inter↔Cara) son ACEPTABLES\n")
+cat("   -> El criterio usado para categorizar es estadístico, no dicotómico\n\n")
+```
+
 ---
 
-# 10. Comparacion Final de Algoritmos de Clasificacion
+
 
 ```{r tabla_final_cls}
 tabla_cls_final <- data.frame(
@@ -1026,7 +1273,70 @@ El analisis permite extraer las siguientes conclusiones:
 
 ---
 
-# Resumen Ejecutivo
+# 11. Limitaciones y Consideraciones Futuras
+
+## 11.1 Limitaciones del Analisis Actual
+
+A pesar de los resultados positivos, existen limitaciones metodologicas importantes:
+
+**1. Datos geograficamente sesgados**
+```{r analisis_ciudades}
+dist_ciudades <- train_data %>% group_by(city) %>% 
+  summarise(n = n(), pct = round(n()/nrow(train_data)*100, 1)) %>%
+  arrange(desc(n))
+
+cat("Distribucion de datos por ciudad:\n")
+print(dist_ciudades)
+
+# El modelo puede estar optimizado para ciudades con mas datos
+cat("\nRiesgo: Los arboles se entrenan principalmente en los datos de ciudades",
+    "con mayor representacion. Predicciones en ciudades con < 5% de datos",
+    "pueden ser menos confiables.\n")
+```
+
+**2. Variables temporales no capturadas**
+Los datos son una foto estatica; no se captura la evolucion temporal de precios,
+ni fenomenos estacionales (precios mas altos en verano). Los modelos entrenados
+pueden no generalizar a datos futuro.
+
+**3. Outliers extremos filtrados**
+Eliminamos el 1% superior de precios. Esto significa el modelo **no puede predecir**
+propiedades de lujo extremo (villas, mansiones), que podrían ser mercado objetivo
+para clientes corporativos premium.
+
+**4. Imputacion de valores faltantes con mediana**
+Reemplazar valores faltantes con la mediana es conservador pero asume Missing at
+Random (MAR). Si faltan datos sistematicamente (e.g., hosts nuevos no reporting
+scores), esta asuncion viola y se introduce sesgo.
+
+## 11.2 Recomendaciones para Trabajo Futuro
+
+```{r recomendaciones}
+recomendaciones <- data.frame(
+  Prioridad = c("Alta", "Alta", "Media", "Media", "Baja"),
+  Area = c("Datos", "Modelado", "Validacion", "Negocio", "Infraestructura"),
+  Tarea = c(
+    "Recolectar datos de propiedades luxury (>P95) para mejorar segmento premium",
+    "Incorporar variables temporales (mes, seasonalidad) en nuevos entrenamientos",
+    "Validacion prospectiva: evaluar modelos en datos de meses posteriores",
+    "Realizar AB-testing: comparar recomendaciones del modelo vs. curacion manual",
+    "Implementar monitoreo automatico de data drift y reentrenamiento (MLOps)"
+  )
+)
+
+knitr::kable(recomendaciones,
+             caption = "Tabla 8. Recomendaciones prioritarias para SmartStay")
+
+cat("\nProximos pasos inmediatos:\n")
+cat("1. Validar el modelo con datos de propiedades nuevas (siguiente mes)\n")
+cat("2. Estimar intervalo de confianza para predicciones (usar bootstrap)\n")
+cat("3. Entrenar modelos separados por ciudad para mayor precision local\n")
+cat("4. Implementar panel interactivo para que asesores ajusten predicciones manualmente\n")
+```
+
+---
+
+# 12. Resumen Ejecutivo
 
 ```{r resumen_final}
 algoritmos_rmse     <- c(rmse_lin, min(resultados_reg$RMSE), rmse_rf_reg)
@@ -1063,6 +1373,89 @@ para prediccion y clasificacion automatizada de propiedades en el backend, y (2)
 un **arbol de decision simplificado** (profundidad 5-8) para generar explicaciones
 comprensibles que los asesores puedan comunicar a sus clientes corporativos y
 particulares.
+
+## 12.1 Matriz de Recomendacion por Caso de Uso
+
+```{r matriz_recomendacion}
+matriz_casos <- data.frame(
+  `Caso de Uso` = c(
+    "Sistema automatico de clasificacion",
+    "Calculo rapido de precio estimado",
+    "Explicaciones a cliente",
+    "Pruebas y analisis exploratorio"
+  ),
+  Algoritmo = c(
+    "Random Forest",
+    "Random Forest",
+    "Arbol simple (prof=5-8)",
+    "Arbol de Regresion"
+  ),
+  Razon = c(
+    "Maxima precision (Accuracy: 73%+)",
+    "RMSE mas bajo ($67), R² 0.68",
+    "Arbol interpretable, >=67% accuracy",
+    "Equilibrio precision-interpretabilidad"
+  ),
+  Tiempo_Implementacion = c(
+    "Inmediato",
+    "Inmediato",
+    "1-2 semanas",
+    "Research"
+  )
+)
+
+cat("\n=== MATRIZ DE DECISIONS POR CASO DE USO ===\n")
+print(matriz_casos)
+
+knitr::kable(matriz_casos,
+             caption = "Tabla 9. Recomendaciones por caso de uso operacional")
+
+cat("\n\n=== RESUMEN METRICAS FINALES ===\n")
+tabla_metricas_finales <- data.frame(
+  `Algoritmo` = c("Regresion Lineal", 
+                  paste0("Arbol Regresion (prof=", mejor_prof_reg, ")"),
+                  "Random Forest",
+                  paste0("Arbol Clasificacion (prof=", mejor_prof_cls, ")"),
+                  "Random Forest"),
+  `Tarea` = c("Prediccion", "Prediccion", "Prediccion",
+              "Clasificacion", "Clasificacion"),
+  `Metrica Principal` = c(
+    paste0("RMSE=$", round(rmse_lin, 2)),
+    paste0("RMSE=$", round(min(resultados_reg$RMSE), 2)),
+    paste0("RMSE=$", round(rmse_rf_reg, 2)),
+    paste0("Accuracy=", round(max(resultados_cls$Accuracy), 1), "%"),
+    paste0("Accuracy=", round(cm_rf$overall["Accuracy"]*100, 1), "%")
+  ),
+  `Interpretabilidad` = c("ALTA", "MEDIA", "BAJA", "MEDIA", "BAJA")
+)
+
+print(tabla_metricas_finales)
+```
+
+## 12.2 Proximximos Pasos de Implementacion
+
+```{r pasos_implementacion}
+pasos <- data.frame(
+  Mes = c("Mes 1 (Inmediato)", 
+          "Mes 2-3",
+          "Mes 4",
+          "Mes 5+"),
+  Actividad = c(
+    "Desplegar Random Forest en produccion (backend)\\nGenerarModelo arbol simple para explicaciones",
+    "Validacion prospectiva con datos nuevos\\nEstimar intervalos de confianza (bootstrap)",
+    "Entrenar modelos separados por ciudad\\nMonitoreo de data drift",
+    "MLOps: Reentrenamiento automatico\\nAB-testing de calidad de recomendaciones"
+  ),
+  Responsable = c(
+    "Data Engineering + ML",
+    "Data Science",
+    "Data Science + Engineering",
+    "DevOps + Data Science"
+  )
+)
+
+knitr::kable(pasos, caption = "Tabla 10. Hoja de ruta de implementacion")
+```
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: "Laboratorio 4 - Arboles de Decision"
-subtitle: "SmartStay Advisors | CC3074 Mineria de Datos - UVG Semestre I 2026"
-author: "Tu Nombre"
+subtitle: "Minería de Datos"
+author: "Pablo Cabrera, Luis Palacios, Pablo Méndez"
 date: "`r Sys.Date()`"
 output:
   html_document:
